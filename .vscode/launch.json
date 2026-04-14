@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Chrome",
+      "request": "launch",
+      "type": "chrome",
+      "file": "${workspaceFolder}/index.html"
+    },
+    {
+      "name": "Attach by com.sun.jdi.SharedMemoryListen",
+      "type": "jdk",
+      "request": "attach",
+      "listen": "true"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Dev Server (watch)",
+      "program": "${workspaceFolder}/server.js",
+      "envFile": "${workspaceFolder}/.env",
+      "runtimeArgs": ["--watch"],
+      "restart": true,
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Production Server",
+      "program": "${workspaceFolder}/server.js",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal"
+    }
+  ]
+}

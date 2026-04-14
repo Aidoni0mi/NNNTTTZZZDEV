@@ -1,0 +1,14 @@
+# API ключ — НИКОГДА не заливать на GitHub!
+.env
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code локальные настройки
+.vscode/settings.json

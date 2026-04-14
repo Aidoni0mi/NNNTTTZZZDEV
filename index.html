@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ТЗ Анализатор · NTZ LAB</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://api.anthropic.com; img-src 'self' data:;">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="Referrer-Policy" content="no-referrer">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg:      #07090f;
+  --s1:      #0d1117;
+  --s2:      #161b27;
+  --s3:      #1e2638;
+  --border:  #232d42;
+  --border2: #2d3a55;
+  --blue:    #4d7cfe;
+  --blue2:   #7b9fff;
+  --cyan:    #38c9d0;
+  --amber:   #f5a623;
+  --green:   #2ecc71;
+  --red:     #e74c3c;
+  --text:    #dce4f5;
+  --text2:   #8a9bbf;
+  --text3:   #4a5878;
+  --r: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+body::after {
+  content: ''; position: fixed; inset: 0;
+  background-image: linear-gradient(rgba(77,124,254,.03) 1px,transparent 1px), linear-gradient(90deg,rgba(77,124,254,.03) 1px,transparent 1px);
+  background-size: 48px 48px; pointer-events: none; z-index: 0;
+}
+
+/* ── LAYOUT ── */
+.shell { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+.sidebar {
+  width: 220px; flex-shrink: 0; background: var(--s1);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  padding: 24px 0; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 20px 20px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.brand-icon { width: 34px; height: 34px; background: linear-gradient(135deg,var(--blue),var(--cyan)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.brand h1 { font-size: 14px; font-weight: 700; line-height: 1.2; }
+.brand p  { font-size: 10px; color: var(--text3); font-family: 'IBM Plex Mono', monospace; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 13px; font-weight: 500; color: var(--text2); cursor: pointer; border-left: 2px solid transparent; transition: all .15s; user-select: none; }
+.nav-item:hover  { color: var(--text); background: var(--s2); }
+.nav-item.active { color: var(--blue2); border-left-color: var(--blue); background: rgba(77,124,254,.07); }
+.nav-icon { font-size: 15px; width: 20px; text-align: center; }
+.nav-sep { height: 1px; background: var(--border); margin: 8px 20px; }
+.sidebar-footer { margin-top: auto; padding: 14px 20px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.version-badge { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text3); background: var(--s2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; display: inline-block; }
+.api-status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text3); cursor: pointer; }
+.api-status:hover { color: var(--text2); }
+.api-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.api-dot.ok  { background: var(--green); }
+.api-dot.err { background: var(--red); }
+.user-badge { font-size: 11px; color: var(--text3); cursor: pointer; transition: color .15s; }
+.user-badge:hover { color: var(--text2); }
+.user-badge.logged { color: var(--cyan); }
+
+/* ── MAIN ── */
+.main { flex: 1; padding: 32px 40px 60px; overflow-x: hidden; }
+.page { display: none; animation: fadeIn .25s ease; }
+.page.active { display: block; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.page-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; letter-spacing: -.3px; }
+.page-sub   { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+
+/* ── CARDS ── */
+.card { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; margin-bottom: 16px; }
+.card-head { padding: 12px 18px; background: var(--s2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.card-head .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+.card-body { padding: 18px; }
+
+/* ── INPUTS ── */
+textarea, input[type=text], input[type=password], input[type=email] {
+  width: 100%; background: transparent; border: none; outline: none;
+  color: var(--text); font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px; line-height: 1.7; padding: 0; resize: none;
+}
+textarea::placeholder, input::placeholder { color: var(--text3); }
+
+/* ── UPLOAD ── */
+.upload-zone { border: 1.5px dashed var(--border2); border-radius: 8px; padding: 28px; text-align: center; cursor: pointer; transition: all .2s; margin-bottom: 14px; }
+.upload-zone:hover, .upload-zone.drag { border-color: var(--blue); background: rgba(77,124,254,.05); }
+.upload-icon  { font-size: 28px; margin-bottom: 8px; }
+.upload-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.upload-sub   { font-size: 12px; color: var(--text2); }
+.upload-file  { font-size: 12px; color: var(--green); margin-top: 6px; font-weight: 600; }
+input[type=file] { display: none; }
+
+/* ── TABS ── */
+.tab-row { display: flex; border-bottom: 1px solid var(--border); background: var(--s2); }
+.tab { padding: 10px 18px; font-size: 12px; font-weight: 600; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; }
+.tab:hover { color: var(--text2); }
+.tab.active { color: var(--blue2); border-bottom-color: var(--blue); }
+
+/* ── CHIPS ── */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.chip { background: var(--s2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; font-size: 11px; font-weight: 600; color: var(--text2); cursor: pointer; transition: all .15s; user-select: none; }
+.chip:hover { border-color: var(--blue); color: var(--blue2); }
+.chip.on { background: rgba(77,124,254,.12); border-color: var(--blue); color: var(--blue2); }
+
+/* ── BUTTONS ── */
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border: none; border-radius: 8px; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.btn-primary { background: linear-gradient(135deg,var(--blue),#6366f1); color: white; width: 100%; justify-content: center; font-size: 14px; padding: 14px; }
+.btn-primary:hover    { opacity: .9; }
+.btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+.btn-green  { background: linear-gradient(135deg,#27ae60,#2ecc71); color: white; width: 100%; justify-content: center; font-size: 14px; padding: 14px; }
+.btn-green:hover    { opacity: .9; }
+.btn-green:disabled { opacity: .45; cursor: not-allowed; }
+.btn-outline { background: transparent; border: 1px solid var(--border2); color: var(--text2); }
+.btn-outline:hover { border-color: var(--blue); color: var(--blue2); }
+.btn-danger { background: transparent; border: 1px solid rgba(231,76,60,.4); color: #f5a5a5; }
+.btn-danger:hover { background: rgba(231,76,60,.1); }
+.btn-sm  { padding: 6px 12px; font-size: 12px; }
+.btn-xs  { padding: 4px 10px; font-size: 11px; border-radius: 6px; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+/* ── SPINNER ── */
+.spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-dark { border-color: rgba(77,124,254,.3); border-top-color: var(--blue); }
+
+/* ── SCORE ── */
+.score-wrap { display: grid; grid-template-columns: 150px 1fr; gap: 16px; margin-bottom: 20px; }
+.score-card { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; gap: 8px; }
+.ring-wrap { position: relative; width: 90px; height: 90px; }
+.ring-wrap svg { width: 90px; height: 90px; transform: rotate(-90deg); }
+.ring-wrap circle { fill: none; stroke-width: 8; stroke-linecap: round; }
+.ring-bg { stroke: var(--s3); }
+.ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+.score-lbl   { font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.score-grade { font-size: 13px; font-weight: 700; }
+.g-good { color: var(--green); }
+.g-mid  { color: var(--amber); }
+.g-bad  { color: var(--red); }
+.metrics { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+.metric { background: var(--s1); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+.metric-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.metric-name { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .8px; }
+.metric-val  { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; }
+.bar-bg  { background: var(--s3); border-radius: 3px; height: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+/* ── RESULTS ── */
+.results-list { display: flex; flex-direction: column; gap: 12px; }
+.res-block { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+.res-head { padding: 11px 16px; background: var(--s2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+.res-count { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text3); background: var(--s1); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; }
+.res-items { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+.res-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 7px; font-size: 13px; line-height: 1.6; }
+.ri-err  { background: rgba(231,76,60,.07);  border: 1px solid rgba(231,76,60,.18); }
+.ri-warn { background: rgba(245,166,35,.07); border: 1px solid rgba(245,166,35,.18); }
+.ri-ok   { background: rgba(46,204,113,.07); border: 1px solid rgba(46,204,113,.18); }
+.ri-rec  { background: rgba(77,124,254,.07); border: 1px solid rgba(77,124,254,.18); }
+.ri-ico  { flex-shrink: 0; margin-top: 1px; }
+
+/* ── EMPTY / ERR / STREAMING ── */
+.empty { text-align: center; padding: 50px 20px; color: var(--text3); }
+.empty-ico { font-size: 40px; margin-bottom: 12px; opacity: .3; }
+.empty-t   { font-size: 15px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+.empty-s   { font-size: 12px; }
+.err-msg   { background: rgba(231,76,60,.08); border: 1px solid rgba(231,76,60,.25); border-radius: 8px; padding: 14px 16px; color: #f5a5a5; font-size: 13px; margin-bottom: 14px; line-height: 1.6; }
+.streaming { display: flex; align-items: center; gap: 8px; padding: 16px; font-size: 12px; color: var(--blue2); font-family: 'IBM Plex Mono', monospace; }
+.s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); animation: pulse 1s ease infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* ── CHAT ── */
+.chat-messages { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); height: 380px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.msg { display: flex; gap: 10px; max-width: 85%; }
+.msg.user { align-self: flex-end; flex-direction: row-reverse; }
+.msg-bubble { padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.msg.ai   .msg-bubble { background: var(--s2); border: 1px solid var(--border); }
+.msg.user .msg-bubble { background: rgba(77,124,254,.2); border: 1px solid rgba(77,124,254,.3); }
+.msg-ava { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; background: var(--s3); border: 1px solid var(--border); margin-top: 2px; }
+.chat-input-row { display: flex; gap: 10px; }
+.chat-input { flex: 1; background: var(--s1); border: 1px solid var(--border); border-radius: 8px; padding: 11px 16px; color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; outline: none; transition: border-color .15s; }
+.chat-input:focus { border-color: var(--blue); }
+
+/* ── GENERATE ── */
+.gen-output { background: var(--s2); border: 1px solid var(--border); border-radius: 8px; padding: 18px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; min-height: 200px; font-family: 'IBM Plex Mono', monospace; color: var(--text2); margin-top: 12px; max-height: 500px; overflow-y: auto; }
+
+/* ── REPORT ── */
+.report-preview { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); padding: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: var(--text2); max-height: 500px; overflow-y: auto; margin-bottom: 14px; }
+
+/* ── LIBRARY ── */
+.lib-layout { display: grid; grid-template-columns: 190px 1fr; gap: 20px; align-items: start; }
+.folder-panel { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+.folder-panel-head { padding: 10px 14px; background: var(--s2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.folder-list { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.folder-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: var(--text2); cursor: pointer; transition: all .15s; user-select: none; }
+.folder-item:hover  { background: var(--s2); color: var(--text); }
+.folder-item.active { background: rgba(77,124,254,.1); color: var(--blue2); }
+.folder-count { margin-left: auto; font-size: 10px; font-family: 'IBM Plex Mono', monospace; color: var(--text3); background: var(--s3); border-radius: 10px; padding: 1px 6px; }
+.folder-actions { display: none; gap: 4px; }
+.folder-item:hover .folder-actions { display: flex; }
+.lib-main { display: flex; flex-direction: column; gap: 12px; }
+.lib-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lib-filter { display: flex; background: var(--s2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.lib-filter-btn { padding: 7px 14px; font-size: 12px; font-weight: 600; color: var(--text3); cursor: pointer; border: none; background: transparent; transition: all .15s; font-family: 'IBM Plex Sans', sans-serif; }
+.lib-filter-btn:hover  { color: var(--text2); }
+.lib-filter-btn.active { background: rgba(77,124,254,.15); color: var(--blue2); }
+.file-card { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; transition: border-color .15s; }
+.file-card:hover { border-color: var(--border2); }
+.file-card-head { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.file-icon { font-size: 18px; flex-shrink: 0; }
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
+.file-badges { display: flex; gap: 6px; flex-shrink: 0; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 600; }
+.badge-ok      { background: rgba(46,204,113,.12); color: var(--green); border: 1px solid rgba(46,204,113,.25); }
+.badge-warn    { background: rgba(245,166,35,.12);  color: var(--amber); border: 1px solid rgba(245,166,35,.25); }
+.badge-err     { background: rgba(231,76,60,.12);   color: #f5a5a5;    border: 1px solid rgba(231,76,60,.25); }
+.badge-neutral { background: var(--s3);             color: var(--text3); border: 1px solid var(--border); }
+.file-body { padding: 10px 16px 14px; }
+.file-note { font-size: 12px; color: var(--text2); background: var(--s2); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; line-height: 1.5; white-space: pre-wrap; }
+.file-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.progress-row { margin: 8px 0; }
+.progress-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; font-family: 'IBM Plex Mono', monospace; }
+.progress-track { background: var(--s3); border-radius: 3px; height: 4px; overflow: hidden; }
+.progress-fill  { height: 100%; background: linear-gradient(90deg,var(--blue),var(--cyan)); border-radius: 3px; transition: width .4s ease; }
+
+/* ── ACCOUNT ── */
+.auth-wrap { max-width: 380px; margin: 0 auto; }
+.auth-tabs { display: flex; background: var(--s2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+.auth-tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text3); cursor: pointer; border: none; background: transparent; font-family: 'IBM Plex Sans', sans-serif; transition: all .15s; }
+.auth-tab:hover  { color: var(--text2); }
+.auth-tab.active { background: rgba(77,124,254,.15); color: var(--blue2); }
+.form-group { margin-bottom: 14px; }
+.form-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; display: block; }
+.form-input-wrap { background: var(--s2); border: 1px solid var(--border2); border-radius: 8px; padding: 11px 14px; transition: border-color .15s; }
+.form-input-wrap:focus-within { border-color: var(--blue); }
+.form-input-wrap input { font-size: 13px; }
+.stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; text-align: center; }
+.stat-val  { font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; color: var(--blue2); }
+.stat-lbl  { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.saved-tz-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+.tz-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--s2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color .15s; }
+.tz-item:hover { border-color: var(--blue); }
+.tz-item-info { flex: 1; min-width: 0; }
+.tz-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tz-item-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.tz-item-score { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; }
+
+/* ── MODALS ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(7,9,15,.88); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal-overlay.hidden { display: none; }
+.modal { background: var(--s1); border: 1px solid var(--border2); border-radius: 14px; padding: 28px; width: 420px; max-width: 100%; max-height: 90vh; overflow-y: auto; }
+.modal-lg { width: 680px; }
+.modal-icon  { font-size: 28px; margin-bottom: 12px; }
+.modal-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.modal-sub   { font-size: 13px; color: var(--text2); margin-bottom: 20px; line-height: 1.6; }
+.modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; line-height: 1; }
+.modal-close:hover { color: var(--text); }
+.key-input-wrap { display: flex; background: var(--s2); border: 1px solid var(--border2); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+.key-input-wrap input { flex: 1; padding: 12px 14px; background: transparent; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+.key-toggle { padding: 0 14px; background: transparent; border: none; color: var(--text3); cursor: pointer; font-size: 14px; transition: color .15s; }
+.key-toggle:hover { color: var(--text2); }
+.modal-hint { font-size: 11px; color: var(--text3); margin-bottom: 20px; line-height: 1.6; }
+.modal-hint a { color: var(--blue2); text-decoration: none; }
+.modal-hint a:hover { text-decoration: underline; }
+.autofix-output { background: var(--s2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; max-height: 420px; overflow-y: auto; color: var(--text2); font-family: 'IBM Plex Mono', monospace; margin: 14px 0; }
+.notes-textarea { background: var(--s2); border: 1px solid var(--border2); border-radius: 8px; padding: 12px 14px; width: 100%; font-size: 13px; line-height: 1.7; resize: vertical; min-height: 120px; margin-bottom: 14px; }
+.notes-textarea:focus { outline: none; border-color: var(--blue); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+@media(max-width:700px) {
+  .sidebar { display: none; }
+  .main { padding: 20px 16px 40px; }
+  .score-wrap, .stat-grid { grid-template-columns: 1fr; }
+  .lib-layout { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── MODAL: API KEY ── -->
+<div class="modal-overlay" id="keyModal">
+  <div class="modal">
+    <div class="modal-icon">🔑</div>
+    <div class="modal-title">Введите API ключ</div>
+    <div class="modal-sub">Ключ хранится только в вашем браузере (localStorage) и никуда не передаётся, кроме Anthropic API.</div>
+    <div class="key-input-wrap">
+      <input type="password" id="keyInput" placeholder="sk-ant-api03-…" autocomplete="off">
+      <button class="key-toggle" onclick="toggleKeyVis()" title="Показать/скрыть">👁</button>
+    </div>
+    <div class="modal-hint">Получить ключ: <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a></div>
+    <button class="btn btn-primary" onclick="saveKey()">Сохранить и продолжить →</button>
+  </div>
+</div>
+
+<!-- ── MODAL: AUTH ── -->
+<div class="modal-overlay hidden" id="authModal">
+  <div class="modal">
+    <div class="modal-icon">👤</div>
+    <div class="modal-title" id="authTitle">Войти в аккаунт</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin" onclick="switchAuth('login')">Войти</button>
+      <button class="auth-tab" id="tabReg" onclick="switchAuth('reg')">Регистрация</button>
+    </div>
+    <div id="authErr" class="err-msg" style="display:none"></div>
+    <div class="form-group">
+      <label class="form-label">Имя пользователя</label>
+      <div class="form-input-wrap"><input type="text" id="authUser" placeholder="username" autocomplete="username"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Пароль</label>
+      <div class="form-input-wrap"><input type="password" id="authPass" placeholder="••••••••" autocomplete="current-password"></div>
+    </div>
+    <button class="btn btn-primary" id="authSubmit" onclick="doAuth()">Войти</button>
+    <button class="btn btn-outline" style="width:100%;margin-top:10px;justify-content:center" onclick="closeAuth()">Отмена</button>
+  </div>
+</div>
+
+<!-- ── MODAL: NEW FOLDER ── -->
+<div class="modal-overlay hidden" id="folderModal">
+  <div class="modal" style="width:360px">
+    <div class="modal-title">📁 Новая папка</div>
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Название</label>
+      <div class="form-input-wrap"><input type="text" id="folderName" placeholder="Название папки…"></div>
+    </div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-primary" style="flex:1" onclick="createFolder()">Создать</button>
+      <button class="btn btn-outline" onclick="document.getElementById('folderModal').classList.add('hidden')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: NOTES ── -->
+<div class="modal-overlay hidden" id="notesModal">
+  <div class="modal" style="width:480px">
+    <div class="modal-title">📝 Уточнения к ТЗ</div>
+    <div class="modal-sub" id="notesModalSub" style="margin-bottom:12px"></div>
+    <textarea class="notes-textarea" id="notesText" placeholder="Добавьте уточнения, комментарии или требования к этому ТЗ…"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-primary" style="flex:1" onclick="saveNotes()">Сохранить</button>
+      <button class="btn btn-outline" onclick="document.getElementById('notesModal').classList.add('hidden')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: AUTO-FIX ── -->
+<div class="modal-overlay hidden" id="autofixModal">
+  <div class="modal modal-lg">
+    <div class="modal-title">🔧 Исправление слабых мест</div>
+    <div class="modal-sub" id="autofixSub">AI дорабатывает ТЗ на основе найденных слабых мест</div>
+    <div id="autofixProgress" class="streaming" style="display:none"><div class="s-dot"></div>Генерирую исправленную версию...</div>
+    <div id="autofixContent" style="display:none">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">ИСПРАВЛЕННОЕ ТЗ</div>
+      <div class="autofix-output" id="autofixText"></div>
+      <div class="btn-row">
+        <button class="btn btn-outline btn-sm" onclick="copyAutofix()">📋 Копировать</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadAutofix()">⬇ Скачать .txt</button>
+        <button class="btn btn-outline btn-sm" onclick="sendAutofixToAnalyze()">⚡ Анализировать снова</button>
+      </div>
+    </div>
+    <button class="btn btn-outline" style="width:100%;margin-top:14px;justify-content:center" onclick="document.getElementById('autofixModal').classList.add('hidden')">Закрыть</button>
+  </div>
+</div>
+
+<!-- ── MODAL: MOVE TO FOLDER ── -->
+<div class="modal-overlay hidden" id="moveModal">
+  <div class="modal" style="width:360px">
+    <div class="modal-title">📁 Переместить в папку</div>
+    <div id="moveFolderList" style="margin:14px 0;display:flex;flex-direction:column;gap:6px"></div>
+    <button class="btn btn-outline" style="width:100%;justify-content:center" onclick="document.getElementById('moveModal').classList.add('hidden')">Отмена</button>
+  </div>
+</div>
+
+<!-- ── SHELL ── -->
+<div class="shell">
+<nav class="sidebar">
+  <div class="brand">
+    <div class="brand-icon">🔬</div>
+    <div><h1>ТЗ Анализатор</h1><p>NTZ LAB · 2025</p></div>
+  </div>
+
+  <div class="nav-item active" data-page="analyze"  onclick="nav(this,'analyze')"><span class="nav-icon">⚡</span> Анализ ТЗ</div>
+  <div class="nav-item"        data-page="generate" onclick="nav(this,'generate')"><span class="nav-icon">✨</span> Генерация ТЗ</div>
+  <div class="nav-sep"></div>
+  <div class="nav-item"        data-page="library"  onclick="nav(this,'library')"><span class="nav-icon">📚</span> Библиотека</div>
+  <div class="nav-item"        data-page="account"  onclick="nav(this,'account')"><span class="nav-icon">👤</span> Аккаунт</div>
+  <div class="nav-sep"></div>
+  <div class="nav-item"        data-page="chat"     onclick="nav(this,'chat')"><span class="nav-icon">💬</span> AI-ассистент</div>
+  <div class="nav-item"        data-page="report"   onclick="nav(this,'report')"><span class="nav-icon">📄</span> Отчёт</div>
+
+  <div class="sidebar-footer">
+    <div class="version-badge">v2.0 · NTZ LAB</div>
+    <div class="api-status" onclick="changeKey()">
+      <div class="api-dot" id="apiDot"></div>
+      <span id="apiLabel">нет ключа</span>
+    </div>
+    <div class="user-badge" id="userBadge" onclick="document.getElementById('authModal').classList.remove('hidden')">👤 Гость</div>
+  </div>
+</nav>
+
+<main class="main">
+
+<!-- ════ PAGE: ANALYZE ════ -->
+<div class="page active" id="page-analyze">
+  <div class="page-title">Анализ технического задания</div>
+  <div class="page-sub">Загрузите файл или вставьте текст — AI найдёт ошибки и даст рекомендации</div>
+
+  <div class="card">
+    <div class="tab-row">
+      <div class="tab active" id="tab-text" onclick="switchInputTab('text')">📝 Текст</div>
+      <div class="tab" id="tab-file" onclick="switchInputTab('file')">📎 Файл (DOCX / TXT)</div>
+    </div>
+    <div class="card-body" id="input-text">
+      <textarea id="tzText" rows="10" placeholder="Вставьте текст технического задания сюда…&#10;&#10;Например: «Разработать информационную систему для управления грантовыми проектами университета…»"></textarea>
+    </div>
+    <div class="card-body" id="input-file" style="display:none">
+      <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+        <div class="upload-icon">📂</div>
+        <div class="upload-title">Перетащите файл или нажмите для выбора</div>
+        <div class="upload-sub">Поддерживается: DOCX, TXT</div>
+        <div class="upload-file" id="fileName"></div>
+      </div>
+      <input type="file" id="fileInput" accept=".docx,.txt" onchange="handleFile(this)">
+      <textarea id="tzFileText" rows="5" readonly placeholder="Текст из файла появится здесь…" style="color:var(--text2);font-size:12px;border:1px solid var(--border);border-radius:6px;padding:12px;background:var(--s2)"></textarea>
+    </div>
+  </div>
+
+  <div class="chips">
+    <div class="chip on" id="c-err"   onclick="this.classList.toggle('on')">🔴 Ошибки</div>
+    <div class="chip on" id="c-weak"  onclick="this.classList.toggle('on')">⚠️ Слабые места</div>
+    <div class="chip on" id="c-rec"   onclick="this.classList.toggle('on')">💡 Рекомендации</div>
+    <div class="chip on" id="c-score" onclick="this.classList.toggle('on')">📊 Оценка</div>
+    <div class="chip on" id="c-kpi"   onclick="this.classList.toggle('on')">🎯 KPI и сроки</div>
+  </div>
+
+  <button class="btn btn-primary" id="analyzeBtn" onclick="doAnalyze()"><span>⚡</span><span>Анализировать ТЗ</span></button>
+
+  <div style="margin-top:28px" id="analyzeResults">
+    <div class="empty"><div class="empty-ico">📋</div><div class="empty-t">Ожидание документа</div><div class="empty-s">Вставьте текст или загрузите файл выше</div></div>
+  </div>
+</div>
+
+<!-- ════ PAGE: GENERATE ════ -->
+<div class="page" id="page-generate">
+  <div class="page-title">Генерация технического задания</div>
+  <div class="page-sub">Опишите проект — AI создаст полноценную структуру ТЗ</div>
+
+  <div class="card">
+    <div class="card-head"><div class="dot"></div> Описание проекта</div>
+    <div class="card-body">
+      <textarea id="genDesc" rows="5" placeholder="Опишите ваш проект в 2–5 предложениях…&#10;&#10;Пример: «Нужно разработать мобильное приложение для студентов Satbayev University, которое помогает отслеживать расписание занятий…»"></textarea>
+    </div>
+  </div>
+
+  <div class="chips" style="margin-bottom:16px">
+    <div class="chip on" id="gtype-it"    onclick="selectGenType(this,'IT-проект')">💻 IT-проект</div>
+    <div class="chip"    id="gtype-sci"   onclick="selectGenType(this,'научный проект')">🔬 Научный проект</div>
+    <div class="chip"    id="gtype-grant" onclick="selectGenType(this,'грантовая заявка / НИОКР')">📋 Грант / НИОКР</div>
+  </div>
+
+  <button class="btn btn-primary" id="genBtn" onclick="doGenerate()"><span>✨</span><span>Сгенерировать структуру ТЗ</span></button>
+
+  <div id="genOutput" style="display:none;margin-top:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:12px;font-weight:600;color:var(--text2)">СГЕНЕРИРОВАННОЕ ТЗ</span>
+      <button class="btn btn-outline btn-sm" onclick="copyGen()">📋 Копировать</button>
+    </div>
+    <div class="gen-output" id="genText"></div>
+    <div class="btn-row">
+      <button class="btn btn-outline btn-sm" onclick="useForAnalysis()">⚡ Отправить на анализ</button>
+      <button class="btn btn-outline btn-sm" onclick="saveGenToLibrary()">📚 Сохранить в библиотеку</button>
+      <button class="btn btn-outline btn-sm" onclick="downloadGen()">⬇ Скачать .txt</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ PAGE: LIBRARY ════ -->
+<div class="page" id="page-library">
+  <div class="page-title">Библиотека ТЗ</div>
+  <div class="page-sub">Загружайте файлы, проверяйте по регламенту и организуйте в папки</div>
+
+  <!-- multi-upload -->
+  <div class="upload-zone" id="libDropZone" style="margin-bottom:16px"
+       onclick="document.getElementById('libFileInput').click()"
+       ondragover="libDragOver(event)" ondragleave="libDragLeave(event)" ondrop="libDrop(event)">
+    <div class="upload-icon">📂</div>
+    <div class="upload-title">Перетащите файлы или нажмите для выбора</div>
+    <div class="upload-sub">Поддерживается: DOCX, TXT · Несколько файлов одновременно · Макс. 10МБ каждый</div>
+  </div>
+  <input type="file" id="libFileInput" accept=".docx,.txt" multiple onchange="libHandleFiles(this)">
+
+  <div class="lib-layout">
+    <!-- folder sidebar -->
+    <div class="folder-panel">
+      <div class="folder-panel-head">
+        <span>📁 Папки</span>
+        <button class="btn btn-xs btn-outline" onclick="document.getElementById('folderModal').classList.remove('hidden')" style="padding:3px 8px;font-size:10px">+ Новая</button>
+      </div>
+      <div class="folder-list" id="folderList"></div>
+    </div>
+
+    <!-- files -->
+    <div class="lib-main">
+      <div class="lib-toolbar">
+        <div class="lib-filter">
+          <button class="lib-filter-btn active" data-f="all"         onclick="setLibFilter(this,'all')">Все</button>
+          <button class="lib-filter-btn"        data-f="compliant"   onclick="setLibFilter(this,'compliant')">✅ Соответствуют</button>
+          <button class="lib-filter-btn"        data-f="partial"     onclick="setLibFilter(this,'partial')">⚠️ Частично</button>
+          <button class="lib-filter-btn"        data-f="failed"      onclick="setLibFilter(this,'failed')">❌ Не прошли</button>
+          <button class="lib-filter-btn"        data-f="unchecked"   onclick="setLibFilter(this,'unchecked')">🔍 Не проверены</button>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="checkAllRegulation()">🔍 Проверить все по регламенту</button>
+      </div>
+      <div id="libCards"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ PAGE: CHAT ════ -->
+<div class="page" id="page-chat">
+  <div class="page-title">AI-ассистент по ТЗ</div>
+  <div class="page-sub">Задавайте вопросы по документу — ассистент отвечает с учётом контекста</div>
+  <div class="chat-messages" id="chatMessages">
+    <div class="msg ai">
+      <div class="msg-ava">🤖</div>
+      <div class="msg-bubble">Привет! Загрузите ТЗ на вкладке «Анализ» — и я отвечу на вопросы по вашему конкретному документу. Или спросите что-то про написание ТЗ для научных проектов!</div>
+    </div>
+  </div>
+  <div class="chat-input-row">
+    <input type="text" class="chat-input" id="chatInput" placeholder="Напишите вопрос… (Enter для отправки)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();doChat()}">
+    <button class="btn btn-primary" style="width:auto;padding:11px 20px" onclick="doChat()">→</button>
+  </div>
+</div>
+
+<!-- ════ PAGE: REPORT ════ -->
+<div class="page" id="page-report">
+  <div class="page-title">Отчёт по анализу</div>
+  <div class="page-sub">Сформированный отчёт по результатам последнего анализа</div>
+  <div id="reportContent">
+    <div class="empty"><div class="empty-ico">📄</div><div class="empty-t">Отчёт не сформирован</div><div class="empty-s">Сначала выполните анализ ТЗ</div></div>
+  </div>
+</div>
+
+<!-- ════ PAGE: ACCOUNT ════ -->
+<div class="page" id="page-account">
+  <div class="page-title">Аккаунт</div>
+  <div class="page-sub">Управление профилем и сохранёнными ТЗ</div>
+  <div id="accountContent"></div>
+</div>
+
+</main>
+</div><!-- /shell -->
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════
+let currentInputTab = 'text';
+let selectedGenType = 'IT-проект';
+let lastAnalysis    = null;
+let lastTzText      = '';
+let chatHistory     = [];
+let currentUser     = null;
+let selectedFolder  = null;   // null = all
+let libFilter       = 'all';
+let notesTargetId   = null;
+let moveTargetId    = null;
+let autofixText     = '';
+
+// ══════════════════════════════════════════════════════════════════
+// API KEY
+// ══════════════════════════════════════════════════════════════════
+const KEY_STORE = 'ntzlab_api_key';
+function getKey() { return localStorage.getItem(KEY_STORE) || ''; }
+
+function setKeyStatus(ok) {
+  document.getElementById('apiDot').className   = 'api-dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('apiLabel').textContent = ok ? 'API ключ ✓' : 'нет ключа';
+}
+
+function saveKey() {
+  const v = document.getElementById('keyInput').value.trim();
+  if (!v.startsWith('sk-')) return;
+  localStorage.setItem(KEY_STORE, v);
+  document.getElementById('keyModal').classList.add('hidden');
+  setKeyStatus(true);
+}
+
+function changeKey() {
+  document.getElementById('keyInput').value = getKey();
+  document.getElementById('keyModal').classList.remove('hidden');
+}
+
+function toggleKeyVis() {
+  const i = document.getElementById('keyInput');
+  i.type = i.type === 'password' ? 'text' : 'password';
+}
+
+(function initKey() {
+  const k = getKey();
+  if (k) { document.getElementById('keyModal').classList.add('hidden'); setKeyStatus(true); }
+  else    setKeyStatus(false);
+  document.getElementById('keyInput').addEventListener('keydown', e => { if (e.key==='Enter') saveKey(); });
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// AUTH — SECURE (PBKDF2 + session tokens + rate limiting)
+// ══════════════════════════════════════════════════════════════════
+const USERS_KEY    = 'ntzlab_users';
+const SESSION_KEY  = 'ntzlab_session';
+const ATTEMPTS_KEY = 'ntzlab_attempts';
+const SESSION_TTL  = 8 * 60 * 60 * 1000;   // 8 часов
+const MAX_ATTEMPTS = 5;
+const LOCK_TIME    = 15 * 60 * 1000;        // 15 минут блокировки
+let   inactivityTimer = null;
+
+function getUsers()   { return JSON.parse(localStorage.getItem(USERS_KEY)   || '[]'); }
+function getSession() { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
+
+// ── PBKDF2 (100 000 итераций, SHA-256) ───────────────────────────
+async function hashPwd(password, saltHex) {
+  const enc  = new TextEncoder();
+  const salt = saltHex
+    ? new Uint8Array(saltHex.match(/.{2}/g).map(b => parseInt(b, 16)))
+    : crypto.getRandomValues(new Uint8Array(16));
+
+  const keyMat = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits   = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' }, keyMat, 256
+  );
+  const hashHex = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2,'0')).join('');
+  const saltOut = Array.from(salt).map(b => b.toString(16).padStart(2,'0')).join('');
+  return { hash: hashHex, salt: saltOut };
+}
+
+// ── RATE LIMITING ─────────────────────────────────────────────────
+function getAttempts(user) {
+  return JSON.parse(localStorage.getItem(ATTEMPTS_KEY) || '{}')[user] || { count: 0, lockedUntil: 0 };
+}
+function recordAttempt(user, success) {
+  const all = JSON.parse(localStorage.getItem(ATTEMPTS_KEY) || '{}');
+  if (success) { delete all[user]; }
+  else {
+    const a = all[user] || { count: 0, lockedUntil: 0 };
+    a.count++;
+    if (a.count >= MAX_ATTEMPTS) a.lockedUntil = Date.now() + LOCK_TIME;
+    all[user] = a;
+  }
+  localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(all));
+}
+function checkLock(user) {
+  const a = getAttempts(user);
+  if (a.lockedUntil > Date.now()) {
+    const mins = Math.ceil((a.lockedUntil - Date.now()) / 60000);
+    throw new Error(`Аккаунт заблокирован на ${mins} мин. из-за множества неудачных попыток`);
+  }
+}
+
+// ── SESSION TOKEN ─────────────────────────────────────────────────
+function setSession(u) {
+  const session = {
+    id:        u.id,
+    username:  u.username,
+    token:     crypto.randomUUID(),
+    createdAt: Date.now(),
+    expiresAt: Date.now() + SESSION_TTL,
+  };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  currentUser = { id: u.id, username: u.username, token: session.token };
+  updateUserBadge();
+  startInactivityTimer();
+}
+
+function validateSession() {
+  const s = getSession();
+  if (!s) return false;
+  if (s.expiresAt < Date.now()) { logout('Сессия истекла. Войдите снова.'); return false; }
+  // Продлить сессию при активности
+  s.expiresAt = Date.now() + SESSION_TTL;
+  localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  return true;
+}
+
+function startInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(() => logout('Вы были автоматически выведены из-за неактивности.'), SESSION_TTL);
+}
+
+// Сброс таймера при любом действии
+['click','keydown','mousemove','touchstart'].forEach(ev =>
+  document.addEventListener(ev, () => { if (currentUser) { clearTimeout(inactivityTimer); startInactivityTimer(); } }, { passive: true })
+);
+
+// ── AUTH FLOW ─────────────────────────────────────────────────────
+async function doAuth() {
+  const mode  = document.getElementById('tabLogin').classList.contains('active') ? 'login' : 'reg';
+  const user  = document.getElementById('authUser').value.trim().toLowerCase();
+  const pass  = document.getElementById('authPass').value;
+  const errEl = document.getElementById('authErr');
+  errEl.style.display = 'none';
+
+  if (!user || !pass) { errEl.textContent = 'Заполните все поля'; errEl.style.display='block'; return; }
+
+  try {
+    checkLock(user);
+    const users = getUsers();
+
+    if (mode === 'reg') {
+      if (users.find(u => u.username === user)) throw new Error('Пользователь уже существует');
+      if (pass.length < 6) throw new Error('Пароль должен быть не менее 6 символов');
+      if (!/[A-Za-z]/.test(pass) || !/[0-9]/.test(pass))
+        throw new Error('Пароль должен содержать буквы и цифры');
+      const { hash, salt } = await hashPwd(pass);
+      const u = { id: crypto.randomUUID(), username: user, passwordHash: hash, salt, createdAt: new Date().toISOString() };
+      users.push(u);
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      recordAttempt(user, true);
+      setSession(u);
+    } else {
+      const u = users.find(u => u.username === user);
+      if (!u) { recordAttempt(user, false); throw new Error('Пользователь не найден'); }
+      // Поддержка старых аккаунтов (SHA-256) и новых (PBKDF2)
+      let match = false;
+      if (u.salt) {
+        const { hash } = await hashPwd(pass, u.salt);
+        match = hash === u.passwordHash;
+      } else {
+        // Legacy: мигрируем на PBKDF2 при успехе
+        const legacyData = new TextEncoder().encode(pass + ':ntz2025salt');
+        const legacyBuf  = await crypto.subtle.digest('SHA-256', legacyData);
+        const legacyHash = Array.from(new Uint8Array(legacyBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+        if (legacyHash === u.passwordHash) {
+          match = true;
+          // Миграция на PBKDF2
+          const { hash: newHash, salt } = await hashPwd(pass);
+          u.passwordHash = newHash; u.salt = salt;
+          localStorage.setItem(USERS_KEY, JSON.stringify(users));
+        }
+      }
+      if (!match) { recordAttempt(user, false); throw new Error('Неверный пароль'); }
+      recordAttempt(user, true);
+      setSession(u);
+    }
+    closeAuth();
+    renderAccountPage();
+    renderFolders(); renderLibCards();
+  } catch(e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  }
+}
+
+function updateUserBadge() {
+  const b = document.getElementById('userBadge');
+  if (currentUser) { b.textContent = '👤 ' + currentUser.username; b.className = 'user-badge logged'; }
+  else             { b.textContent = '👤 Гость';                    b.className = 'user-badge'; }
+}
+
+function logout(msg) {
+  clearTimeout(inactivityTimer);
+  localStorage.removeItem(SESSION_KEY);
+  currentUser = null;
+  updateUserBadge();
+  renderAccountPage(); renderFolders(); renderLibCards();
+  if (msg) setTimeout(() => alert(msg), 100);
+}
+
+function closeAuth() { document.getElementById('authModal').classList.add('hidden'); }
+
+function switchAuth(mode) {
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabReg').classList.toggle('active', mode==='reg');
+  document.getElementById('authTitle').textContent     = mode==='login' ? 'Войти в аккаунт' : 'Регистрация';
+  document.getElementById('authSubmit').textContent    = mode==='login' ? 'Войти' : 'Зарегистрироваться';
+  document.getElementById('authErr').style.display     = 'none';
+}
+
+// ── INIT SESSION ──────────────────────────────────────────────────
+(function initSession() {
+  const s = getSession();
+  if (!s) return;
+  if (s.expiresAt < Date.now()) { localStorage.removeItem(SESSION_KEY); return; }
+  currentUser = { id: s.id, username: s.username, token: s.token };
+  updateUserBadge();
+  startInactivityTimer();
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// LIBRARY STORAGE
+// ══════════════════════════════════════════════════════════════════
+function libKey()     { return currentUser ? `ntzlab_lib_${currentUser.id}` : 'ntzlab_lib_guest'; }
+function folderKey()  { return currentUser ? `ntzlab_fol_${currentUser.id}` : 'ntzlab_fol_guest'; }
+function historyKey() { return currentUser ? `ntzlab_hist_${currentUser.id}` : 'ntzlab_hist_guest'; }
+
+function getLib()     { return JSON.parse(localStorage.getItem(libKey())     || '[]'); }
+function getFolders() { return JSON.parse(localStorage.getItem(folderKey())  || '[]'); }
+function getHistory() { return JSON.parse(localStorage.getItem(historyKey()) || '[]'); }
+
+function saveLib(d)     { localStorage.setItem(libKey(),     JSON.stringify(d)); }
+function saveFolders(d) { localStorage.setItem(folderKey(),  JSON.stringify(d)); }
+function saveHistory(d) { localStorage.setItem(historyKey(), JSON.stringify(d)); }
+
+function addToLib(doc)    { const l=getLib(); l.unshift(doc); saveLib(l); }
+function updateLib(id,up) { const l=getLib(); const i=l.findIndex(d=>d.id===id); if(i!==-1){l[i]={...l[i],...up,updatedAt:new Date().toISOString()};saveLib(l);} }
+function deleteFromLib(id){ saveLib(getLib().filter(d=>d.id!==id)); }
+
+function addToHistory(entry) {
+  const h = getHistory();
+  h.unshift({ ...entry, savedAt: new Date().toISOString() });
+  saveHistory(h.slice(0, 50));
+}
+
+// ══════════════════════════════════════════════════════════════════
+// VIRUS CHECK (client-side)
+// ══════════════════════════════════════════════════════════════════
+function virusCheck(file, text) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['docx','txt'].includes(ext))
+    return { safe: false, level: 'err', reason: `Тип .${ext} не разрешён` };
+  if (file.size > 10 * 1024 * 1024)
+    return { safe: false, level: 'err', reason: 'Файл > 10МБ' };
+  if (file.size === 0)
+    return { safe: false, level: 'err', reason: 'Файл пустой' };
+
+  const suspicious = [
+    { p: /<script\b/i,    r: 'Обнаружен тег <script>' },
+    { p: /javascript:/i,  r: 'Обнаружен javascript:' },
+    { p: /vbscript:/i,    r: 'Обнаружен vbscript:' },
+    { p: /eval\s*\(/i,    r: 'Обнаружен eval()' },
+    { p: /\x00\x00\x00/,  r: 'Обнаружены нулевые байты' },
+  ];
+
+  for (const {p, r} of suspicious)
+    if (p.test(text)) return { safe: false, level: 'warn', reason: r };
+
+  return { safe: true, level: 'ok', reason: 'Проверка пройдена' };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CLAUDE API
+// ══════════════════════════════════════════════════════════════════
+// Очередь запросов — не даём запускать 2 вызова одновременно
+let _apiQueue = Promise.resolve();
+
+async function callClaude(messages, system, maxTokens = 1500) {
+  // Ставим в очередь: ждём завершения предыдущего + пауза 2с
+  _apiQueue = _apiQueue.then(() => new Promise(r => setTimeout(r, 2000)));
+  await _apiQueue;
+
+  const apiKey = getKey();
+  if (!apiKey) { document.getElementById('keyModal').classList.remove('hidden'); throw new Error('Введите API ключ'); }
+
+  // Принудительный потолок: не превышаем 4000 токенов за вызов
+  const safeTokens = Math.min(maxTokens, 4000);
+
+  const body = { model: 'claude-sonnet-4-6', max_tokens: safeTokens, messages };
+  if (system) body.system = system;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    // Rate limit — понятное сообщение
+    if (res.status === 429) {
+      const retryAfter = res.headers?.get('retry-after') || 60;
+      throw new RateLimitError(`Превышен лимит запросов. Подождите ${retryAfter} сек. и попробуйте снова.`, Number(retryAfter));
+    }
+    throw new Error(data?.error?.message || `API error ${res.status}`);
+  }
+
+  return (data.content || []).map(i => i.text || '').join('');
+}
+
+// Кастомный класс ошибки rate limit
+class RateLimitError extends Error {
+  constructor(msg, retryAfter = 60) {
+    super(msg);
+    this.name = 'RateLimitError';
+    this.retryAfter = retryAfter;
+  }
+}
+
+// Показывает блок с таймером обратного отсчёта при rate limit
+function showRateLimit(containerEl, seconds, onRetry) {
+  let remaining = seconds;
+  const render = () => {
+    containerEl.innerHTML = `<div class="err-msg" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <span>⏳ Лимит API. Повтор через <b id="rl-count" style="font-family:monospace">${remaining}с</b></span>
+      <button class="btn btn-outline btn-sm" onclick="clearInterval(window._rlTimer);${onRetry ? 'window._rlRetry()' : ''}">Попробовать сейчас</button>
+    </div>`;
+  };
+  render();
+  window._rlRetry = onRetry;
+  window._rlTimer = setInterval(() => {
+    remaining--;
+    const el = document.getElementById('rl-count');
+    if (el) el.textContent = remaining + 'с';
+    if (remaining <= 0) {
+      clearInterval(window._rlTimer);
+      if (onRetry) onRetry();
+    }
+  }, 1000);
+}
+
+function safeParseJson(raw) {
+  // 1. Убираем markdown-обёртки
+  let s = raw.replace(/```json[\s\S]*?```|```[\s\S]*?```/g, m => {
+    const inner = m.replace(/^```json?\s*/,'').replace(/\s*```$/,'');
+    return inner;
+  }).trim();
+
+  // Если нет markdown — берём как есть, но обрезаем до первого {
+  const firstBrace = s.indexOf('{');
+  if (firstBrace > 0) s = s.slice(firstBrace);
+
+  // 2. Сразу пробуем
+  try { return JSON.parse(s); } catch(_) {}
+
+  // 3. Умная починка: проходим посимвольно и закрываем всё открытое
+  let inStr = false, esc = false;
+  const stack = [];   // '{' или '['
+  let lastGoodPos = 0;
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc)          { esc = false; continue; }
+    if (c === '\\' && inStr) { esc = true; continue; }
+    if (c === '"')    { inStr = !inStr; continue; }
+    if (inStr)        continue;
+
+    if (c === '{' || c === '[') { stack.push(c); }
+    else if (c === '}') { if (stack.length && stack[stack.length-1]==='{') { stack.pop(); if (!stack.length) lastGoodPos = i+1; } }
+    else if (c === ']') { if (stack.length && stack[stack.length-1]==='[') { stack.pop(); } }
+  }
+
+  // 4. Если строка оборвана внутри "..." — закрываем кавычку
+  if (inStr) s += '"';
+
+  // 5. Обрезаем незавершённые значения: убираем "висячую" запятую или неполный ключ
+  s = s.replace(/,\s*$/, '')       // висячая запятая в конце
+        .replace(/:\s*$/, ': null') // ключ без значения
+        .replace(/,\s*([}\]])/, '$1'); // запятая перед закрывающей скобкой
+
+  // 6. Закрываем все открытые структуры
+  for (let i = stack.length - 1; i >= 0; i--) {
+    s += stack[i] === '{' ? '}' : ']';
+  }
+
+  try { return JSON.parse(s); } catch(_) {}
+
+  // 7. Крайний случай — возвращаем последний полностью закрытый объект
+  if (lastGoodPos > 0) {
+    try { return JSON.parse(s.slice(0, lastGoodPos)); } catch(_) {}
+  }
+
+  // 8. Совсем плохо — возвращаем пустую структуру
+  return { score:{total:0,clarity:0,completeness:0,feasibility:0}, errors:[], weak:[], strengths:[], recommendations:[], kpi:{found:false,items:[]}, missing_sections:[] };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// NAV
+// ══════════════════════════════════════════════════════════════════
+function nav(el, page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  el.classList.add('active');
+  if (page === 'library') { renderFolders(); renderLibCards(); }
+  if (page === 'account') renderAccountPage();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ANALYZE
+// ══════════════════════════════════════════════════════════════════
+function switchInputTab(tab) {
+  currentInputTab = tab;
+  document.getElementById('tab-text').classList.toggle('active', tab==='text');
+  document.getElementById('tab-file').classList.toggle('active', tab==='file');
+  document.getElementById('input-text').style.display = tab==='text' ? '' : 'none';
+  document.getElementById('input-file').style.display = tab==='file' ? '' : 'none';
+}
+
+function dragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag'); }
+function dragLeave()  { document.getElementById('dropZone').classList.remove('drag'); }
+function dropFile(e)  { e.preventDefault(); document.getElementById('dropZone').classList.remove('drag'); if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); }
+function handleFile(input) { if (input.files[0]) processFile(input.files[0]); }
+
+async function processFile(file) {
+  const n = document.getElementById('fileName');
+  n.textContent = '⏳ ' + file.name;
+  try {
+    let text = file.name.endsWith('.docx')
+      ? (await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value
+      : await file.text();
+    document.getElementById('tzFileText').value = text;
+    n.textContent = '✅ ' + file.name;
+  } catch(e) { n.textContent = '❌ ' + e.message; }
+}
+
+function getTzText() {
+  return currentInputTab === 'text'
+    ? document.getElementById('tzText').value.trim()
+    : document.getElementById('tzFileText').value.trim();
+}
+
+async function doAnalyze() {
+  const text = getTzText();
+  if (!text) { alert('Введите текст ТЗ или загрузите файл'); return; }
+  lastTzText = text;
+
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true; btn.innerHTML = '<div class="spin"></div><span>Анализирую...</span>';
+
+  const opts = {
+    errors: document.getElementById('c-err').classList.contains('on'),
+    weak:   document.getElementById('c-weak').classList.contains('on'),
+    rec:    document.getElementById('c-rec').classList.contains('on'),
+    score:  document.getElementById('c-score').classList.contains('on'),
+    kpi:    document.getElementById('c-kpi').classList.contains('on'),
+  };
+
+  document.getElementById('analyzeResults').innerHTML = '<div class="streaming"><div class="s-dot"></div>AI анализирует документ...</div>';
+
+  const prompt = `Эксперт по ТЗ для IT/науки в Казахстане. Проанализируй ТЗ. Верни ТОЛЬКО JSON, без markdown, без пояснений.
+ВАЖНО: каждый элемент массива — максимум 90 символов. Максимум 4 элемента в каждом массиве. JSON должен быть полностью закрыт.
+
+ТЗ: """${text.slice(0, 2000)}"""
+
+JSON:
+{"score":{"total":0,"clarity":0,"completeness":0,"feasibility":0},"errors":[{"text":"кратко"}],"weak":[{"text":"кратко"}],"strengths":[{"text":"кратко"}],"recommendations":[{"text":"кратко"}],"kpi":{"found":false,"items":["кратко"]},"missing_sections":["раздел"]}`;
+
+  try {
+    const raw  = await callClaude([{role:'user',content:prompt}], null, 1800);
+    const data = safeParseJson(raw);
+    lastAnalysis = data;
+    renderAnalysis(data, opts);
+    buildReport(data);
+    addToHistory({ name: 'Анализ ' + new Date().toLocaleString('ru'), score: data.score?.total || 0, text: text.slice(0,200) });
+  } catch(e) {
+    const resEl = document.getElementById('analyzeResults');
+    if (e instanceof RateLimitError) {
+      showRateLimit(resEl, e.retryAfter, () => doAnalyze());
+    } else {
+      resEl.innerHTML = `<div class="err-msg">⚠️ ${esc(e.message)}</div>`;
+    }
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<span>⚡</span><span>Анализировать снова</span>';
+  }
+}
+
+function renderAnalysis(d, opts) {
+  const s = d.score||{}, total = s.total||0;
+  const C = 2*Math.PI*38, off = C-(total/100)*C;
+  const color = total>=75?'#2ecc71':total>=50?'#f5a623':'#e74c3c';
+  const [gl,gc] = total>=75?['Хорошо','g-good']:total>=50?['Средне','g-mid']:['Слабо','g-bad'];
+  let html = '';
+
+  if (opts.score) html += `<div class="score-wrap">
+    <div class="score-card">
+      <div class="ring-wrap"><svg viewBox="0 0 90 90"><circle class="ring-bg" cx="45" cy="45" r="38"/><circle cx="45" cy="45" r="38" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg><div class="ring-num">${total}</div></div>
+      <div class="score-lbl">Общий балл</div><div class="score-grade ${gc}">${gl}</div>
+    </div>
+    <div class="metrics">${met('Ясность',s.clarity||0,'#4d7cfe')}${met('Полнота',s.completeness||0,'#6366f1')}${met('Реализуемость',s.feasibility||0,'#38c9d0')}</div>
+  </div>`;
+
+  if (d.missing_sections?.length) html += `<div class="card" style="margin-bottom:16px"><div class="card-head"><div class="dot" style="background:var(--red)"></div> Отсутствующие разделы</div><div class="card-body" style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px">${d.missing_sections.map(ms=>`<span style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.25);border-radius:5px;padding:4px 10px;font-size:12px;color:#f5a5a5">${esc(ms)}</span>`).join('')}</div></div>`;
+
+  html += '<div class="results-list">';
+  if (opts.errors && d.errors?.length)          html += blk('🔴','Критические ошибки',d.errors,'ri-err');
+  if (opts.weak   && d.weak?.length)            html += blk('⚠️','Слабые места',d.weak,'ri-warn');
+  if (d.strengths?.length)                      html += blk('✅','Сильные стороны',d.strengths,'ri-ok');
+  if (opts.rec    && d.recommendations?.length) html += blk('💡','Рекомендации',d.recommendations,'ri-rec');
+
+  if (opts.kpi && d.kpi) {
+    const kpiRows = d.kpi.items?.length
+      ? d.kpi.items.map(k=>`<div class="res-item ri-ok"><span class="ri-ico">🎯</span><span>${esc(k)}</span></div>`).join('')
+      : '<div class="res-item ri-warn"><span class="ri-ico">⚠️</span><span>KPI не найдены</span></div>';
+    html += `<div class="res-block"><div class="res-head">🎯 KPI и результаты <span class="res-count">${d.kpi.items?.length||0}</span></div><div class="res-items">${kpiRows}</div></div>`;
+  }
+  html += '</div>';
+
+  // Auto-fix button (if weak spots exist)
+  if (d.weak?.length) {
+    html += `<div style="margin-top:16px"><button class="btn btn-green" onclick="openAutofix()" style="background:linear-gradient(135deg,#27ae60,#2ecc71)"><span>🔧</span><span>Исправить слабые места (${d.weak.length})</span></button></div>`;
+  }
+
+  document.getElementById('analyzeResults').innerHTML = html;
+}
+
+function met(name, val, color) {
+  return `<div class="metric"><div class="metric-top"><span class="metric-name">${name}</span><span class="metric-val" style="color:${color}">${val}</span></div><div class="bar-bg"><div class="bar-fill" style="width:${val}%;background:${color}"></div></div></div>`;
+}
+
+function blk(ico, title, items, cls) {
+  return `<div class="res-block"><div class="res-head">${ico} ${title} <span class="res-count">${items.length}</span></div><div class="res-items">${items.map(i=>`<div class="res-item ${cls}"><span class="ri-ico">${ico}</span><span>${esc(i.text)}</span></div>`).join('')}</div></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// AUTO-FIX
+// ══════════════════════════════════════════════════════════════════
+async function openAutofix(customText, customWeak) {
+  const tzText = customText || lastTzText;
+  const weak   = customWeak || lastAnalysis?.weak || [];
+  if (!tzText) { alert('Нет текста ТЗ для исправления'); return; }
+
+  document.getElementById('autofixModal').classList.remove('hidden');
+  document.getElementById('autofixProgress').style.display = 'flex';
+  document.getElementById('autofixContent').style.display  = 'none';
+  document.getElementById('autofixSub').textContent = `Исправляю ${weak.length} слабых мест…`;
+
+  const weakList = weak.map((w,i)=>`${i+1}. ${w.text||w}`).join('\n');
+  const prompt = `Ты — эксперт по техническим заданиям. Улучши ТЗ, исправив все слабые места.
+
+Слабые места:
+${weakList}
+
+ТЗ:
+"""
+${tzText.slice(0, 3000)}
+"""
+
+Верни улучшенную версию ТЗ. Исправленные/дополненные части отмечай [✓ ИСПРАВЛЕНО]. Пиши на русском.`;
+
+  try {
+    const fixed = await callClaude([{role:'user',content:prompt}], null, 3000);
+    autofixText = fixed;
+    document.getElementById('autofixText').textContent = fixed;
+    document.getElementById('autofixProgress').style.display = 'none';
+    document.getElementById('autofixContent').style.display  = 'block';
+  } catch(e) {
+    const progEl = document.getElementById('autofixProgress');
+    if (e instanceof RateLimitError) {
+      showRateLimit(progEl, e.retryAfter, () => openAutofix(customText, customWeak));
+    } else {
+      progEl.innerHTML = `<span style="color:#f5a5a5">❌ ${esc(e.message)}</span>`;
+    }
+  }
+}
+
+function copyAutofix()    { navigator.clipboard.writeText(autofixText).then(()=>alert('Скопировано!')); }
+function downloadAutofix(){ dl(autofixText,'ТЗ_исправленное.txt'); }
+function sendAutofixToAnalyze() {
+  document.getElementById('tzText').value = autofixText;
+  currentInputTab = 'text'; switchInputTab('text');
+  document.getElementById('autofixModal').classList.add('hidden');
+  document.querySelector('[data-page="analyze"]').click();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GENERATE
+// ══════════════════════════════════════════════════════════════════
+function selectGenType(el, type) {
+  document.querySelectorAll('[id^=gtype]').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on'); selectedGenType = type;
+}
+
+async function doGenerate() {
+  const desc = document.getElementById('genDesc').value.trim();
+  if (!desc) { alert('Опишите проект'); return; }
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  const outEl = document.getElementById('genText');
+  document.getElementById('genOutput').style.display = 'block';
+  outEl.textContent = '';
+
+  const sysPrompt = `Ты — эксперт по написанию технических заданий для «${selectedGenType}» в Казахстане. Пиши структурированно, с измеримыми показателями, на русском языке. Не обрывай текст на середине — всегда завершай начатый раздел полностью.`;
+
+  const part1Prompt = `Напиши первую половину полноценного ТЗ для следующего проекта.
+
+Описание проекта: "${desc}"
+
+Напиши разделы 1–5:
+1. Общие сведения (наименование, заказчик, исполнитель, сроки, глоссарий, нормативная база)
+2. Цель и задачи проекта (бизнес-задачи, технические задачи, KPI целей)
+3. Функциональные требования (детальные, с кодами FR-XXX, таблицами, подпунктами)
+4. Нефункциональные требования (производительность, безопасность, надёжность, UX)
+5. Технические требования и стек технологий
+
+В конце последнего раздела напиши маркер: [ПРОДОЛЖЕНИЕ_СЛЕДУЕТ]`;
+
+  try {
+    btn.innerHTML = '<div class="spin"></div><span>Генерирую часть 1/2...</span>';
+    const part1 = await callClaude([{ role: 'user', content: part1Prompt }], sysPrompt, 8192);
+    const cleanPart1 = part1.replace('[ПРОДОЛЖЕНИЕ_СЛЕДУЕТ]', '').trimEnd();
+    outEl.textContent = cleanPart1 + '\n\n⏳ Генерирую продолжение…';
+
+    const part2Prompt = `Продолжи написание ТЗ для проекта: "${desc}".
+
+Первая часть уже написана (разделы 1–5). Теперь напиши разделы 6–9:
+6. Этапы реализации с конкретными сроками (таблица: этап, работы, срок, результат)
+7. KPI и измеримые результаты (таблица: показатель, базовое значение, целевое значение, срок)
+8. Требования к документации (перечень документов, ГОСТ, форматы)
+9. Критерии приёмки и тестирования (чек-лист, нагрузочное тестирование, UAT)
+
+Заверши документ подписными строками.`;
+
+    btn.innerHTML = '<div class="spin"></div><span>Генерирую часть 2/2...</span>';
+    const part2 = await callClaude([
+      { role: 'user',      content: part1Prompt },
+      { role: 'assistant', content: part1 },
+      { role: 'user',      content: part2Prompt },
+    ], sysPrompt, 8192);
+
+    outEl.textContent = cleanPart1 + '\n\n' + part2.trim();
+  } catch(e) {
+    alert('Ошибка: ' + e.message);
+    outEl.textContent = outEl.textContent.replace('⏳ Генерирую продолжение…', '');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>✨</span><span>Сгенерировать структуру ТЗ</span>';
+  }
+}
+
+function copyGen()     { navigator.clipboard.writeText(document.getElementById('genText').textContent).then(()=>alert('Скопировано!')); }
+function downloadGen() { dl(document.getElementById('genText').textContent,'ТЗ_сгенерированное.txt'); }
+function useForAnalysis() {
+  document.getElementById('tzText').value = document.getElementById('genText').textContent;
+  currentInputTab='text'; switchInputTab('text');
+  document.querySelector('[data-page="analyze"]').click();
+}
+function saveGenToLibrary() {
+  const text = document.getElementById('genText').textContent;
+  if (!text) return;
+  const doc = { id: crypto.randomUUID(), name: 'Сгенерированное_ТЗ_' + Date.now() + '.txt', text, size: text.length, folderId: null, virusStatus: 'ok', virusReason: 'Сгенерировано', regStatus: 'unchecked', regData: null, notes: '', createdAt: new Date().toISOString() };
+  addToLib(doc);
+  alert('Сохранено в библиотеку!');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// LIBRARY
+// ══════════════════════════════════════════════════════════════════
+function libDragOver(e)  { e.preventDefault(); document.getElementById('libDropZone').classList.add('drag'); }
+function libDragLeave()  { document.getElementById('libDropZone').classList.remove('drag'); }
+function libDrop(e)      { e.preventDefault(); document.getElementById('libDropZone').classList.remove('drag'); libHandleFiles({files:e.dataTransfer.files}); }
+
+async function libHandleFiles(input) {
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+
+  for (const file of files) {
+    let text = '';
+    try {
+      text = file.name.endsWith('.docx')
+        ? (await mammoth.extractRawText({arrayBuffer: await file.arrayBuffer()})).value
+        : await file.text();
+    } catch(e) { text = ''; }
+
+    const vr = virusCheck(file, text);
+    const doc = {
+      id:          crypto.randomUUID(),
+      name:        file.name,
+      text:        text.slice(0, 80000),
+      size:        file.size,
+      folderId:    selectedFolder,
+      virusStatus: vr.safe ? 'ok' : vr.level,
+      virusReason: vr.reason,
+      regStatus:   'unchecked',
+      regData:     null,
+      notes:       '',
+      createdAt:   new Date().toISOString(),
+    };
+    addToLib(doc);
+  }
+  renderLibCards();
+  input.value = '';
+}
+
+async function checkRegulation(docId) {
+  const lib  = getLib();
+  const doc  = lib.find(d => d.id === docId);
+  if (!doc) return;
+
+  updateLib(docId, { regStatus: 'checking' });
+  renderLibCards();
+
+  const prompt = `Проверь ТЗ на соответствие стандартам (разделы, цели, сроки, KPI). Верни ТОЛЬКО JSON без markdown. Каждый элемент массива — макс. 70 символов, макс. 4 элемента в массиве.
+{"compliant":false,"score":0,"passed":["кратко"],"failed":["кратко"],"summary":"одно предложение"}
+
+ТЗ: """${doc.text.slice(0, 1500)}"""`;
+
+  try {
+    const raw  = await callClaude([{role:'user',content:prompt}], null, 1024);
+    const data = safeParseJson(raw);
+    const status = data.score >= 75 ? 'compliant' : data.score >= 45 ? 'partial' : 'failed';
+    updateLib(docId, { regStatus: status, regData: data });
+  } catch(e) {
+    updateLib(docId, { regStatus: 'unchecked' });
+  }
+  renderLibCards();
+}
+
+async function checkAllRegulation() {
+  const lib = getLib().filter(d => filterMatch(d));
+  for (const doc of lib) {
+    if (doc.regStatus === 'unchecked') await checkRegulation(doc.id);
+  }
+}
+
+function setLibFilter(el, f) {
+  libFilter = f;
+  document.querySelectorAll('.lib-filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderLibCards();
+}
+
+function filterMatch(doc) {
+  const folderOk = selectedFolder === null || doc.folderId === selectedFolder;
+  if (!folderOk) return false;
+  if (libFilter === 'all') return true;
+  return doc.regStatus === libFilter;
+}
+
+function renderLibCards() {
+  const lib = getLib().filter(filterMatch);
+  const el  = document.getElementById('libCards');
+
+  if (!lib.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-ico">📂</div><div class="empty-t">Нет файлов</div><div class="empty-s">Загрузите DOCX или TXT файлы выше</div></div>';
+    return;
+  }
+
+  el.innerHTML = lib.map(doc => {
+    const virusBadge = doc.virusStatus === 'ok'
+      ? `<span class="badge badge-ok">✅ Безопасен</span>`
+      : doc.virusStatus === 'warn'
+        ? `<span class="badge badge-warn">⚠️ Предупреждение</span>`
+        : `<span class="badge badge-err">❌ ${esc(doc.virusReason)}</span>`;
+
+    const regBadge = doc.regStatus === 'compliant'
+      ? `<span class="badge badge-ok">✅ Соответствует</span>`
+      : doc.regStatus === 'partial'
+        ? `<span class="badge badge-warn">⚠️ Частично</span>`
+        : doc.regStatus === 'failed'
+          ? `<span class="badge badge-err">❌ Не прошёл</span>`
+          : doc.regStatus === 'checking'
+            ? `<span class="badge badge-neutral">⏳ Проверка…</span>`
+            : `<span class="badge badge-neutral">🔍 Не проверен</span>`;
+
+    const folderName = (() => {
+      const f = getFolders().find(f => f.id === doc.folderId);
+      return f ? `<span style="font-size:10px;color:var(--text3)">📁 ${esc(f.name)}</span>` : '';
+    })();
+
+    const noteHtml = doc.notes
+      ? `<div class="file-note">📝 ${esc(doc.notes)}</div>` : '';
+
+    const regDetail = doc.regData
+      ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;padding:8px 10px;background:var(--s2);border-radius:6px">${esc(doc.regData.summary)} <b style="color:var(--blue2)">(${doc.regData.score}/100)</b></div>`
+      : '';
+
+    return `<div class="file-card" id="fc-${doc.id}">
+      <div class="file-card-head">
+        <div class="file-icon">${doc.name.endsWith('.docx')?'📄':'📝'}</div>
+        <div class="file-info">
+          <div class="file-name">${esc(doc.name)}</div>
+          <div class="file-meta">${fmtSize(doc.size)} · ${fmtDate(doc.createdAt)} ${folderName}</div>
+        </div>
+        <div class="file-badges">${virusBadge}${regBadge}</div>
+      </div>
+      <div class="file-body">
+        ${noteHtml}${regDetail}
+        <div class="file-actions">
+          <button class="btn btn-outline btn-xs" onclick="openNotes('${doc.id}')">📝 Уточнения</button>
+          <button class="btn btn-outline btn-xs" onclick="checkRegulation('${doc.id}')">🔍 Проверить</button>
+          <button class="btn btn-outline btn-xs" onclick="libAnalyze('${doc.id}')">⚡ Анализ</button>
+          <button class="btn btn-outline btn-xs" onclick="libAutofix('${doc.id}')">🔧 Исправить</button>
+          <button class="btn btn-outline btn-xs" onclick="openMove('${doc.id}')">📁 В папку</button>
+          <button class="btn btn-danger btn-xs" onclick="libDelete('${doc.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function libAnalyze(id) {
+  const doc = getLib().find(d=>d.id===id);
+  if (!doc) return;
+  lastTzText = doc.text;
+  document.getElementById('tzText').value = doc.text;
+  currentInputTab = 'text'; switchInputTab('text');
+  document.querySelector('[data-page="analyze"]').click();
+}
+
+async function libAutofix(id) {
+  const doc = getLib().find(d=>d.id===id);
+  if (!doc) return;
+
+  // First analyze to get weak spots, then fix
+  const prompt = `Ты — эксперт по ТЗ. Найди слабые места в этом ТЗ и верни JSON:
+{"weak":[{"text":""}]}
+
+ТЗ:"""${doc.text.slice(0,2500)}"""`;
+
+  try {
+    const raw  = await callClaude([{role:'user',content:prompt}], null, 1024);
+    const data = safeParseJson(raw);
+    openAutofix(doc.text, data.weak || []);
+  } catch(e) {
+    openAutofix(doc.text, []);
+  }
+}
+
+function libDelete(id) {
+  if (!confirm('Удалить этот файл из библиотеки?')) return;
+  deleteFromLib(id); renderLibCards(); renderFolders();
+}
+
+// ── NOTES ──
+function openNotes(id) {
+  const doc = getLib().find(d=>d.id===id);
+  if (!doc) return;
+  notesTargetId = id;
+  document.getElementById('notesModalSub').textContent = doc.name;
+  document.getElementById('notesText').value = doc.notes || '';
+  document.getElementById('notesModal').classList.remove('hidden');
+}
+
+function saveNotes() {
+  if (!notesTargetId) return;
+  updateLib(notesTargetId, { notes: document.getElementById('notesText').value });
+  document.getElementById('notesModal').classList.add('hidden');
+  renderLibCards();
+}
+
+// ── MOVE TO FOLDER ──
+function openMove(id) {
+  moveTargetId = id;
+  const folders = getFolders();
+  const list = document.getElementById('moveFolderList');
+  list.innerHTML = `<div class="folder-item" onclick="moveToFolder(null)">📂 Без папки (корень)</div>`
+    + folders.map(f=>`<div class="folder-item" onclick="moveToFolder('${f.id}')">📁 ${esc(f.name)}</div>`).join('');
+  document.getElementById('moveModal').classList.remove('hidden');
+}
+
+function moveToFolder(folderId) {
+  if (!moveTargetId) return;
+  updateLib(moveTargetId, { folderId });
+  document.getElementById('moveModal').classList.add('hidden');
+  renderLibCards(); renderFolders();
+}
+
+// ── FOLDERS ──
+function renderFolders() {
+  const folders = getFolders();
+  const lib = getLib();
+  const el  = document.getElementById('folderList');
+
+  const allCount = lib.length;
+  let html = `<div class="folder-item ${selectedFolder===null?'active':''}" onclick="selectFolderItem(null)">
+    📂 Все файлы <span class="folder-count">${allCount}</span>
+  </div>`;
+
+  html += folders.map(f => {
+    const cnt = lib.filter(d=>d.folderId===f.id).length;
+    return `<div class="folder-item ${selectedFolder===f.id?'active':''}" onclick="selectFolderItem('${f.id}')">
+      📁 ${esc(f.name)} <span class="folder-count">${cnt}</span>
+      <div class="folder-actions">
+        <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteFolder('${f.id}')" style="padding:2px 6px;font-size:10px">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  if (el) el.innerHTML = html;
+}
+
+function selectFolderItem(id) {
+  selectedFolder = id; renderFolders(); renderLibCards();
+}
+
+function createFolder() {
+  const name = document.getElementById('folderName').value.trim();
+  if (!name) return;
+  const folders = getFolders();
+  folders.push({ id: crypto.randomUUID(), name, createdAt: new Date().toISOString() });
+  saveFolders(folders);
+  document.getElementById('folderName').value = '';
+  document.getElementById('folderModal').classList.add('hidden');
+  renderFolders();
+}
+
+function deleteFolder(id) {
+  if (!confirm('Удалить папку? Файлы останутся (переместятся в корень).')) return;
+  saveFolders(getFolders().filter(f=>f.id!==id));
+  getLib().filter(d=>d.folderId===id).forEach(d=>updateLib(d.id,{folderId:null}));
+  if (selectedFolder===id) selectedFolder=null;
+  renderFolders(); renderLibCards();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CHAT
+// ══════════════════════════════════════════════════════════════════
+async function doChat() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim(); if (!msg) return;
+  input.value = '';
+  addMsg('user', msg);
+  const ctx = lastTzText ? `Контекст (ТЗ):\n"""\n${lastTzText.slice(0,3000)}\n"""\n\n` : '';
+  chatHistory.push({role:'user',content:ctx+msg});
+  const think = addMsg('ai','...');
+  try {
+    const reply = await callClaude(chatHistory,'Ты — AI-ассистент по техническим заданиям. Отвечай конкретно, по-русски, коротко и практично.',1024);
+    think.textContent = reply;
+    chatHistory.push({role:'assistant',content:reply});
+    if (chatHistory.length>20) chatHistory=chatHistory.slice(-20);
+  } catch(e) { think.textContent='❌ '+e.message; }
+}
+
+function addMsg(role,text) {
+  const wrap=document.getElementById('chatMessages');
+  const div=document.createElement('div');
+  div.className='msg '+role;
+  div.innerHTML=`<div class="msg-ava">${role==='ai'?'🤖':'👤'}</div><div class="msg-bubble"></div>`;
+  div.querySelector('.msg-bubble').textContent=text;
+  wrap.appendChild(div); wrap.scrollTop=wrap.scrollHeight;
+  return div.querySelector('.msg-bubble');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// REPORT
+// ══════════════════════════════════════════════════════════════════
+function buildReport(data) {
+  const now=new Date().toLocaleString('ru-RU'), s=data.score||{};
+  const lines=[
+    `════════════════════════════════════════════`,
+    `    ОТЧЁТ ПО АНАЛИЗУ ТЕХНИЧЕСКОГО ЗАДАНИЯ`,
+    `════════════════════════════════════════════`,
+    `Дата: ${now}`, ``,
+    `── ОЦЕНКА ─────────────────────────────────`,
+    `Общий балл:      ${s.total||0} / 100`,
+    `Ясность:         ${s.clarity||0} / 100`,
+    `Полнота:         ${s.completeness||0} / 100`,
+    `Реализуемость:   ${s.feasibility||0} / 100`, ``,
+  ];
+  if (data.missing_sections?.length) { lines.push(`── ОТСУТСТВУЮЩИЕ РАЗДЕЛЫ ───────────────────`); data.missing_sections.forEach(ms=>lines.push(`  ✗ ${ms}`)); lines.push(''); }
+  if (data.errors?.length)           { lines.push(`── КРИТИЧЕСКИЕ ОШИБКИ ──────────────────────`); data.errors.forEach((e,i)=>lines.push(`  ${i+1}. ${e.text}`)); lines.push(''); }
+  if (data.weak?.length)             { lines.push(`── СЛАБЫЕ МЕСТА ────────────────────────────`); data.weak.forEach((e,i)=>lines.push(`  ${i+1}. ${e.text}`)); lines.push(''); }
+  if (data.strengths?.length)        { lines.push(`── СИЛЬНЫЕ СТОРОНЫ ─────────────────────────`); data.strengths.forEach((e,i)=>lines.push(`  ${i+1}. ${e.text}`)); lines.push(''); }
+  if (data.recommendations?.length)  { lines.push(`── РЕКОМЕНДАЦИИ ────────────────────────────`); data.recommendations.forEach((e,i)=>lines.push(`  ${i+1}. ${e.text}`)); lines.push(''); }
+  if (data.kpi?.items?.length)       { lines.push(`── KPI ─────────────────────────────────────`); data.kpi.items.forEach(k=>lines.push(`  🎯 ${k}`)); lines.push(''); }
+  lines.push(`════════════════════════════════════════════`);
+  lines.push(`Сформировано: ТЗ Анализатор · NTZ LAB`);
+  const reportText = lines.join('\n');
+
+  const preview=document.createElement('div'); preview.className='report-preview'; preview.textContent=reportText;
+  const btnRow=document.createElement('div'); btnRow.className='btn-row';
+  const dlBtn=document.createElement('button'); dlBtn.className='btn btn-outline btn-sm'; dlBtn.textContent='⬇ Скачать .txt'; dlBtn.onclick=()=>dl(reportText,'Отчёт_ТЗ.txt');
+  const cpBtn=document.createElement('button'); cpBtn.className='btn btn-outline btn-sm'; cpBtn.textContent='📋 Копировать'; cpBtn.onclick=()=>navigator.clipboard.writeText(reportText).then(()=>alert('Скопировано!'));
+  btnRow.append(dlBtn,cpBtn);
+  const container=document.getElementById('reportContent'); container.innerHTML=''; container.append(preview,btnRow);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ACCOUNT PAGE
+// ══════════════════════════════════════════════════════════════════
+function renderAccountPage() {
+  const el = document.getElementById('accountContent');
+  if (!currentUser) {
+    el.innerHTML = `<div class="auth-wrap">
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin2" onclick="switchAuth2('login')">Войти</button>
+        <button class="auth-tab" id="tabReg2" onclick="switchAuth2('reg')">Регистрация</button>
+      </div>
+      <div id="authErr2" class="err-msg" style="display:none"></div>
+      <div class="form-group"><label class="form-label">Имя пользователя</label><div class="form-input-wrap"><input type="text" id="authUser2" placeholder="username"></div></div>
+      <div class="form-group"><label class="form-label">Пароль</label><div class="form-input-wrap"><input type="password" id="authPass2" placeholder="••••••••"></div></div>
+      <button class="btn btn-primary" id="authSubmit2" onclick="doAuthInline()">Войти</button>
+    </div>`;
+    return;
+  }
+
+  const lib  = getLib();
+  const hist = getHistory();
+  const analyzed = hist.length;
+  const avgScore = hist.length ? Math.round(hist.reduce((a,h)=>a+h.score,0)/hist.length) : 0;
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:700">👤 ${esc(currentUser.username)}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Аккаунт создан на этом устройстве</div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="logout()">Выйти</button>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-val">${lib.length}</div><div class="stat-lbl">Файлов в библиотеке</div></div>
+      <div class="stat-card"><div class="stat-val">${analyzed}</div><div class="stat-lbl">Анализов выполнено</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:${avgScore>=75?'var(--green)':avgScore>=50?'var(--amber)':'var(--red)'}">${avgScore}</div><div class="stat-lbl">Средний балл ТЗ</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div class="dot"></div> История анализов</div>
+      <div class="card-body" style="padding:12px">
+        ${hist.length ? `<div class="saved-tz-list">${hist.slice(0,20).map(h=>`
+          <div class="tz-item">
+            <div style="font-size:18px">📋</div>
+            <div class="tz-item-info">
+              <div class="tz-item-name">${esc(h.name)}</div>
+              <div class="tz-item-meta">${h.savedAt ? fmtDate(h.savedAt) : ''}</div>
+            </div>
+            <div class="tz-item-score" style="color:${h.score>=75?'var(--green)':h.score>=50?'var(--amber)':'var(--red)'}">${h.score}</div>
+          </div>`).join('')}</div>`
+        : '<div style="text-align:center;padding:24px;color:var(--text3)">История пуста</div>'}
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-head"><div class="dot"></div> Файлы в библиотеке</div>
+      <div class="card-body" style="padding:12px">
+        ${lib.length ? `<div class="saved-tz-list">${lib.slice(0,20).map(d=>`
+          <div class="tz-item" onclick="libAnalyze('${d.id}')">
+            <div style="font-size:18px">${d.name.endsWith('.docx')?'📄':'📝'}</div>
+            <div class="tz-item-info">
+              <div class="tz-item-name">${esc(d.name)}</div>
+              <div class="tz-item-meta">${fmtSize(d.size)} · ${fmtDate(d.createdAt)}</div>
+            </div>
+            <span class="badge ${d.regStatus==='compliant'?'badge-ok':d.regStatus==='partial'?'badge-warn':d.regStatus==='failed'?'badge-err':'badge-neutral'}">${d.regStatus==='compliant'?'✅':d.regStatus==='partial'?'⚠️':d.regStatus==='failed'?'❌':'🔍'}</span>
+          </div>`).join('')}</div>`
+        : '<div style="text-align:center;padding:24px;color:var(--text3)">Библиотека пуста</div>'}
+      </div>
+    </div>`;
+}
+
+async function doAuthInline() {
+  const mode = document.getElementById('tabLogin2')?.classList.contains('active') ? 'login' : 'reg';
+  const user = document.getElementById('authUser2')?.value.trim();
+  const pass = document.getElementById('authPass2')?.value;
+  const errEl = document.getElementById('authErr2');
+  if (!user||!pass) { errEl.textContent='Заполните все поля'; errEl.style.display='block'; return; }
+  try {
+    const hash=await hashPwd(pass), users=getUsers();
+    if (mode==='reg') {
+      if (users.find(u=>u.username===user)) throw new Error('Пользователь уже существует');
+      const u={id:crypto.randomUUID(),username:user,passwordHash:hash,createdAt:new Date().toISOString()};
+      users.push(u); localStorage.setItem(USERS_KEY,JSON.stringify(users)); setSession(u);
+    } else {
+      const u=users.find(u=>u.username===user);
+      if (!u) throw new Error('Пользователь не найден');
+      if (hash!==u.passwordHash) throw new Error('Неверный пароль');
+      setSession(u);
+    }
+    renderAccountPage(); renderFolders(); renderLibCards();
+  } catch(e) { errEl.textContent=e.message; errEl.style.display='block'; }
+}
+
+function switchAuth2(mode) {
+  document.getElementById('tabLogin2')?.classList.toggle('active', mode==='login');
+  document.getElementById('tabReg2')?.classList.toggle('active', mode==='reg');
+  document.getElementById('authSubmit2').textContent = mode==='login'?'Войти':'Зарегистрироваться';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════════════════
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function dl(text, name) {
+  const a=document.createElement('a'); a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(text); a.download=name; a.click();
+}
+function fmtSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes < 1024) return bytes+'B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1)+'KB';
+  return (bytes/1048576).toFixed(1)+'MB';
+}
+function fmtDate(iso) {
+  try { return new Date(iso).toLocaleDateString('ru-RU'); } catch { return '—'; }
+}
+</script>
+</body>
+</html>
