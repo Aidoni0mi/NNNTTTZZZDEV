@@ -277,11 +277,51 @@ input[type=file] { display: none; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
 
+/* ── MOBILE NAV BAR ── */
+.mob-nav {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  background: var(--s1); border-top: 1px solid var(--border);
+  padding: 6px 0 max(6px, env(safe-area-inset-bottom));
+}
+.mob-nav-inner { display: flex; justify-content: space-around; align-items: center; }
+.mob-nav-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 6px 10px; border-radius: 10px; cursor: pointer;
+  color: var(--text3); font-size: 10px; font-weight: 600;
+  transition: all .15s; border: none; background: none; min-width: 52px;
+}
+.mob-nav-btn .mn-icon { font-size: 20px; line-height: 1; }
+.mob-nav-btn.active { color: var(--blue2); background: rgba(77,124,254,.1); }
+.mob-nav-btn:hover  { color: var(--text); }
+
+/* ── MOBILE HEADER ── */
+.mob-header {
+  display: none;
+  position: sticky; top: 0; z-index: 100;
+  background: var(--s1); border-bottom: 1px solid var(--border);
+  padding: 10px 16px; align-items: center; justify-content: space-between;
+}
+.mob-brand { display: flex; align-items: center; gap: 8px; }
+.mob-brand-icon { width: 28px; height: 28px; background: linear-gradient(135deg,var(--blue),var(--cyan)); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+.mob-brand-name { font-size: 13px; font-weight: 700; }
+.mob-header-right { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text3); }
+
 @media(max-width:700px) {
   .sidebar { display: none; }
-  .main { padding: 20px 16px 40px; }
+  .mob-nav { display: block; }
+  .mob-header { display: flex; }
+  .main { padding: 16px 14px 90px; }
   .score-wrap, .stat-grid { grid-template-columns: 1fr; }
   .lib-layout { grid-template-columns: 1fr; }
+  .page-title { font-size: 17px; }
+  .page-sub { font-size: 12px; margin-bottom: 16px; }
+  .card-body { padding: 14px; }
+  .btn { font-size: 13px; padding: 10px 16px; }
+  .upload-zone { padding: 20px; }
+  .modal { width: calc(100vw - 32px); padding: 20px; }
+  .result-grid { grid-template-columns: 1fr !important; }
+  .score-circle { width: 90px; height: 90px; font-size: 22px; }
 }
 </style>
 </head>
@@ -380,6 +420,39 @@ input[type=file] { display: none; }
     <button class="btn btn-outline" style="width:100%;justify-content:center" onclick="document.getElementById('moveModal').classList.add('hidden')">Отмена</button>
   </div>
 </div>
+
+<!-- ── MOBILE HEADER ── -->
+<header class="mob-header">
+  <div class="mob-brand">
+    <div class="mob-brand-icon">⚡</div>
+    <span class="mob-brand-name">NTZ LAB</span>
+  </div>
+  <div class="mob-header-right">
+    <span id="mobApiDot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block"></span>
+    <span id="mobUserBadge" style="cursor:pointer" onclick="document.getElementById('authModal').classList.remove('hidden')">Войти</span>
+  </div>
+</header>
+
+<!-- ── MOBILE BOTTOM NAV ── -->
+<nav class="mob-nav">
+  <div class="mob-nav-inner">
+    <button class="mob-nav-btn active" id="mn-analyze" onclick="goPage('analyze')">
+      <span class="mn-icon">🔍</span>Анализ
+    </button>
+    <button class="mob-nav-btn" id="mn-generate" onclick="goPage('generate')">
+      <span class="mn-icon">⚡</span>ТЗ
+    </button>
+    <button class="mob-nav-btn" id="mn-library" onclick="goPage('library')">
+      <span class="mn-icon">📁</span>Библиотека
+    </button>
+    <button class="mob-nav-btn" id="mn-chat" onclick="goPage('chat')">
+      <span class="mn-icon">💬</span>Чат
+    </button>
+    <button class="mob-nav-btn" id="mn-account" onclick="goPage('account')">
+      <span class="mn-icon">👤</span>Аккаунт
+    </button>
+  </div>
+</nav>
 
 <!-- ── SHELL ── -->
 <div class="shell">
@@ -611,6 +684,8 @@ function toggleKeyVis() {
   if (k) { document.getElementById('keyModal').classList.add('hidden'); setKeyStatus(true); }
   else    setKeyStatus(false);
   document.getElementById('keyInput').addEventListener('keydown', e => { if (e.key==='Enter') saveKey(); });
+  // Инициализация мобильного меню
+  setTimeout(() => updateMobNav('analyze'), 100);
 })();
 
 // ══════════════════════════════════════════════════════════════════
@@ -763,6 +838,11 @@ function updateUserBadge() {
   const b = document.getElementById('userBadge');
   if (currentUser) { b.textContent = '👤 ' + currentUser.username; b.className = 'user-badge logged'; }
   else             { b.textContent = '👤 Гость';                    b.className = 'user-badge'; }
+  // Обновить мобильный хедер
+  const mobU = document.getElementById('mobUserBadge');
+  if (mobU) mobU.textContent = currentUser ? '👤 ' + currentUser.username : 'Войти';
+  const mobDot = document.getElementById('mobApiDot');
+  if (mobDot) mobDot.style.background = localStorage.getItem('tz_api_key') ? 'var(--green)' : 'var(--text3)';
 }
 
 function logout(msg) {
@@ -984,8 +1064,35 @@ function nav(el, page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   el.classList.add('active');
+  updateMobNav(page);
   if (page === 'library') { renderFolders(); renderLibCards(); }
   if (page === 'account') renderAccountPage();
+  window.scrollTo(0, 0);
+}
+
+// Мобильная навигация — переход по имени страницы
+function goPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) pageEl.classList.add('active');
+  const sideEl = document.querySelector(`.nav-item[data-page="${page}"]`);
+  if (sideEl) sideEl.classList.add('active');
+  updateMobNav(page);
+  if (page === 'library') { renderFolders(); renderLibCards(); }
+  if (page === 'account') renderAccountPage();
+  window.scrollTo(0, 0);
+}
+
+function updateMobNav(page) {
+  document.querySelectorAll('.mob-nav-btn').forEach(b => b.classList.remove('active'));
+  const mb = document.getElementById('mn-' + page);
+  if (mb) mb.classList.add('active');
+  // Обновить мобильный хедер
+  const mobU = document.getElementById('mobUserBadge');
+  if (mobU) mobU.textContent = currentUser ? '👤 ' + currentUser.username : 'Войти';
+  const mobDot = document.getElementById('mobApiDot');
+  if (mobDot) mobDot.style.background = localStorage.getItem('tz_api_key') ? 'var(--green)' : 'var(--text3)';
 }
 
 // ══════════════════════════════════════════════════════════════════
