@@ -4,7 +4,6 @@
 
 [![Демо](https://img.shields.io/badge/🌐_Демо-aidoni0mi.github.io/NTZHACK-blue)](https://aidoni0mi.github.io/NNNTTTZZZDEV/)
 [![Версия](https://img.shields.io/badge/версия-2.0-cyan)]()
-[![Лицензия](https://img.shields.io/badge/лицензия-MIT-green)]()
 
 ---
 
