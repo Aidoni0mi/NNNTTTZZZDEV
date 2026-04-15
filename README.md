@@ -111,7 +111,7 @@ NTZHACK/
 
 ## 🌐 Демо
 
-👉 **[https://aidoni0mi.github.io/NTZHACK](https://aidoni0mi.github.io/NTZHACK)**
+👉 **[https://aidoni0mi.github.io/NTZHACK](https://aidoni0mi.github.io/NNNTTTZZZDEV/)**
 
 > При первом открытии потребуется ввести API-ключ Anthropic.  
 > Получить ключ: [console.anthropic.com](https://console.anthropic.com/settings/keys)
